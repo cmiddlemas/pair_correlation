@@ -9,6 +9,9 @@ use rayon::prelude::*;
 /// Reads a Ge file and outputs
 /// the pair correlation function on
 /// stdout
+/// Warning: program assumes all numeric
+/// conversions are trivially valid, don't
+/// put in absurdly large numbers
 #[derive(StructOpt, Debug)]
 #[structopt(name = "pair_correlation")]
 struct Opt {
@@ -24,6 +27,11 @@ struct Opt {
     /// Gives the value of rho to assume
     #[structopt(long, default_value = "1.0")]
     rho: f64,
+
+    /// Gives an offset for every bin, i.e. makes a gap around the origin,
+    /// to inhibit divide by s_1(r) effect
+    #[structopt(short, long, default_value = "0.0")]
+    offset: f64,
 
     /// Gives the list of files, interpreted as ensemble average
     #[structopt(parse(from_os_str))]
@@ -180,7 +188,8 @@ fn measure_distance(config: &Config,
 
 fn sample_file(path: &PathBuf,
                step: f64,
-               nbins: usize
+               nbins: usize,
+               offset: f64
 ) -> BinResult
 {
     let config = Config::parse(path);
@@ -190,9 +199,9 @@ fn sample_file(path: &PathBuf,
     for i in 0..config.n_particles {
         for j in 0..i {
             let r = measure_distance(&config, i, j);
-            let bin = (r/step).floor() as usize;
-            if bin < nbins {
-                count[bin] += 1;
+            let bin = ((r-offset)/step).floor() as isize;
+            if bin >= 0 && bin < (nbins as isize) {
+                count[bin as usize] += 1;
             }
         }
     }
@@ -218,14 +227,14 @@ fn main() {
     let step: f64 = opt.cutoff/(opt.nbins as f64);
 
     let domain: Vec<f64> = (0..opt.nbins)
-        .map(|x| step/2.0 + (x as f64)*step)
+        .map(|x| step/2.0 + (x as f64)*step + opt.offset)
         .collect();
 
     let n_ens = opt.files.len();
 
     let summed_result: BinResult = opt.files.par_iter()
              .enumerate()
-             .map(|(i, x)| { eprintln!("Working on {}", i); sample_file(x, step, opt.nbins) })
+             .map(|(i, x)| { eprintln!("Working on {}", i); sample_file(x, step, opt.nbins, opt.offset) })
              .collect::<Vec<BinResult>>().iter()
              .fold(BinResult {dim: 0, n_particles: 0, count: vec![0; opt.nbins] },
                    |acc, x| add_bins(acc, x));
