@@ -87,6 +87,16 @@ struct BinResult {
     count: Vec<usize>,
 }
 
+// Strategy for normalization taken from Ge's code
+fn sphere_vol(dim: usize, r: f64) ->f64 {
+    match dim {
+        1 => 2.0*r,
+        2 => PI*r*r,
+        3 => 4.0*PI*r*r*r/3.0,
+        _ => panic!("Dimension not implemented!"),
+    }
+}
+
 // Takes bin count and converts it to an approx
 // to g_2 by normalization
 fn format_output(count: Vec<usize>,
@@ -97,14 +107,13 @@ fn format_output(count: Vec<usize>,
                  n_ens: usize,
                  rho: f64)
 {
+    let half_width = step/2.0;
     for (c, r) in count.iter().zip(domain.iter()) {
-        // 2*count/n_particles = rho s1(r) g2(r) dr
-        let g2 = match dim {
-            1 => (*c as f64)*2.0/(rho*2.0*step*(n_particles as f64)*(n_ens as f64)),
-            2 => (*c as f64)*2.0/(rho*2.0*PI*(*r)*step*(n_particles as f64)*(n_ens as f64)),
-            3 => (*c as f64)*2.0/(rho*4.0*PI*(*r)*(*r)*step*(n_particles as f64)*(n_ens as f64)),
-            _ => panic!("Dimension not implemented!"),
-        };
+        // 2*count/(n_particles*n_ens) = rho s1(r) g2(r) dr
+        let g2 = (*c as f64)*2.0
+                /((sphere_vol(dim, r + half_width) - sphere_vol(dim, r - half_width))
+                    *rho*(n_particles as f64)*(n_ens as f64)
+                );
         println!("{} {}", r, g2);
     }
 }
