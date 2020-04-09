@@ -6,7 +6,10 @@ use rustc_version::version;
 use vergen::{ConstantsFlags, generate_cargo_keys};
 
 fn main() {
-    let flags = ConstantsFlags::all();
+    let mut flags = ConstantsFlags::all();
+    // https://docs.rs/vergen/3.1.0/vergen/struct.ConstantsFlags.html
+    // among possible other places
+    flags.toggle(ConstantsFlags::SEMVER);
     generate_cargo_keys(flags).expect("Must be able to generate cargo keys");
     // Based on 
     // https://vallentin.io/2019/06/06/versioning
