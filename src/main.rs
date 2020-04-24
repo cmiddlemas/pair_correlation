@@ -151,6 +151,32 @@ fn format_output(count: Vec<usize>,
     }
 }
 
+// use binary search
+fn bin_distance(r: f64, count: &mut [usize], lower_limit: &[f64], upper_limit: &[f64]) {
+    let length = count.len();
+    let mut lower_idx = 0;
+    let mut upper_idx = length - 1;
+    let mut idx = (upper_idx - lower_idx)/2;
+    loop {
+        let l = lower_limit[idx];
+        let u = upper_limit[idx];
+        if r >= l && r < u {
+            count[idx] += 1;
+            break;
+        } else { //continue search
+            if lower_idx == upper_idx {
+                break; // r not in binning range
+            } else if r >= l {
+                lower_idx = idx + 1;
+                idx = lower_idx + (upper_idx - lower_idx)/2;
+            } else {
+                upper_idx = idx - 1;
+                idx = lower_idx + (upper_idx - lower_idx)/2;
+            }
+        }
+    }
+}
+
 fn sample_file(path: &PathBuf,
                lower_limit: &[f64],
                upper_limit: &[f64]
@@ -163,9 +189,7 @@ fn sample_file(path: &PathBuf,
     for i in 0..config.n_particles {
         for j in 0..i {
             let r = measure_distance(&config, i, j);
-            for (c, l, u) in izip!(&mut count, lower_limit, upper_limit) {
-                if r >= *l && r < *u { *c += 1; }
-            }
+            bin_distance(r, &mut count, lower_limit, upper_limit);
         }
     }
 
