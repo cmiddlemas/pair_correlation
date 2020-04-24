@@ -7,6 +7,10 @@ use structopt::StructOpt;
 use rayon::prelude::*;
 use itertools::izip;
 
+mod measure_distance;
+
+use measure_distance::measure_distance;
+
 /// Reads a Ge file and outputs
 /// the pair correlation function on
 /// stdout in format
@@ -17,7 +21,12 @@ use itertools::izip;
 #[derive(StructOpt, Debug)]
 #[structopt(name = "pair_correlation")]
 struct Opt {
-    
+   
+    // From https://github.com/TeXitoi/structopt
+    /// Verbosity of monitoring output
+    #[structopt(short, long, parse(from_occurrences))]
+    verbosity: u8,
+
     /// Gives the maximum radius to sample to
     #[structopt(short, long)]
     cutoff: f64,
@@ -47,7 +56,7 @@ struct Opt {
 }
 
 // Holds the result of parsing a configuration
-struct Config {
+pub struct Config {
     dim: usize,
     n_particles: usize,
     unit_cell: Vec<f64>,
@@ -110,14 +119,20 @@ fn sphere_vol(dim: usize, r: f64) ->f64 {
 fn format_output(count: Vec<usize>,
                  count2: Vec<usize>,
                  domain: Vec<f64>,
-                 step: f64,
+                 lower_limit: Vec<f64>,
+                 upper_limit: Vec<f64>,
                  n_particles: usize,
                  dim: usize,
                  n_ens: usize,
                  rho: f64)
 {
-    let half_width = step/2.0;
-    for (c, c2, r) in izip!(count.iter(), count2.iter(), domain.iter()) {
+    for (c, c2, r, l, u) in izip!(count.iter(),
+                                  count2.iter(),
+                                  domain.iter(),
+                                  lower_limit.iter(),
+                                  upper_limit.iter()) 
+    {
+        let width = *u - *l;
         // 2*count/(n_particles*n_ens) = rho s1(r) g2(r) dr
         let f_n_ens = n_ens as f64;
         let ens_c = (*c as f64)/f_n_ens;
@@ -125,110 +140,31 @@ fn format_output(count: Vec<usize>,
         // https://en.wikipedia.org/wiki/Variance
         let ens_var_c = (*c2 as f64)/(f_n_ens - 1.0) - ens_c*ens_c*f_n_ens/(f_n_ens - 1.0);
         let g2_coeff = 2.0
-            /((sphere_vol(dim, r + half_width) - sphere_vol(dim, r - half_width))
+            /((sphere_vol(dim, *u) - sphere_vol(dim, *l))
                 *rho*(n_particles as f64)
             );
         let g2 = ens_c*g2_coeff;
         let var_g2 = ens_var_c*g2_coeff*g2_coeff;
         let std_err_g2 = var_g2.sqrt()/((n_ens as f64).sqrt());
         let poisson_est = (*c as f64).sqrt()*g2_coeff/f_n_ens;
-        println!("{} {} {} {} {}", r, g2, std_err_g2, poisson_est, step);
+        println!("{} {} {} {} {}", r, g2, std_err_g2, poisson_est, width);
     }
-}
-
-// Measures distance on torus defined by config.unit_cell
-fn measure_distance(config: &Config,
-                    i: usize,
-                    j: usize
-) -> f64
-{
-    // Comparing vs r^2 is more efficient in most dim
-    let mut r2 = std::f64::MAX;
-    match config.dim {
-        1 => {
-            for l in -1..2 {
-                let candidate_x = config.coords[i]
-                    - (config.coords[j] + (l as f64)*config.unit_cell[0]);
-                let candidate_r2 = candidate_x.powi(2);
-                if candidate_r2 < r2 {
-                    r2 = candidate_r2;
-                }
-            }
-        }
-        2 => {
-            for l in -1..2 {
-                for m in -1..2 {
-                    let candidate_x = config.coords[2*i]
-                        - (config.coords[2*j] 
-                            + (l as f64) * config.unit_cell[0]
-                            + (m as f64) * config.unit_cell[2]
-                        );
-                    let candidate_y = config.coords[2*i + 1]
-                        - (config.coords[2*j + 1]
-                            + (l as f64) * config.unit_cell[1]
-                            + (m as f64) * config.unit_cell[3]
-                        );
-                    let candidate_r2 = candidate_x.powi(2) + candidate_y.powi(2);
-                    if candidate_r2 < r2 {
-                        r2 = candidate_r2;
-                    }
-                }
-            }
-        }
-        3 => {
-            for l in -1..2 {
-                for m in -1..2 {
-                    for n in -1..2 {
-                        let candidate_x = config.coords[3*i]
-                            - (config.coords[3*j] 
-                                + (l as f64) * config.unit_cell[0]
-                                + (m as f64) * config.unit_cell[3]
-                                + (n as f64) * config.unit_cell[6]
-                            );
-                        let candidate_y = config.coords[3*i + 1]
-                            - (config.coords[3*j + 1]
-                                + (l as f64) * config.unit_cell[1]
-                                + (m as f64) * config.unit_cell[4]
-                                + (n as f64) * config.unit_cell[7]
-                            );
-                        let candidate_z = config.coords[3*i + 2]
-                            - (config.coords[3*j + 2]
-                                + (l as f64) * config.unit_cell[2]
-                                + (m as f64) * config.unit_cell[5]
-                                + (n as f64) * config.unit_cell[8]
-                            );
-                        let candidate_r2 = candidate_x.powi(2) + candidate_y.powi(2) + candidate_z.powi(2);
-                        if candidate_r2 < r2 {
-                            r2 = candidate_r2;
-                        }
-                    }
-                }
-            }
-        }
-        _ => {
-            panic!("Dimension not implemented");
-        }
-    }
-    
-    r2.sqrt()
 }
 
 fn sample_file(path: &PathBuf,
-               step: f64,
-               nbins: usize,
-               offset: f64
+               lower_limit: &[f64],
+               upper_limit: &[f64]
 ) -> BinResult
 {
     let config = Config::parse(path);
     
-    let mut count = vec![0; nbins];
+    let mut count = vec![0; lower_limit.len()];
 
     for i in 0..config.n_particles {
         for j in 0..i {
             let r = measure_distance(&config, i, j);
-            let bin = ((r-offset)/step).floor() as isize;
-            if bin >= 0 && bin < (nbins as isize) {
-                count[bin as usize] += 1;
+            for (c, l, u) in izip!(&mut count, lower_limit, upper_limit) {
+                if r >= *l && r < *u { *c += 1; }
             }
         }
     }
@@ -279,18 +215,40 @@ fn main() {
     eprintln!("Start program:\n");
 
     let opt = Opt::from_args();
+    let domain: Vec<f64>;
+    let lower_limit: Vec<f64>;
+    let upper_limit: Vec<f64>;
+    
+    if opt.autoscale { //Bins that scale with surface area of sphere
+        domain = Vec::new();
+        lower_limit = Vec::new();
+        upper_limit = Vec::new();
+    } else { // Equal width bins
+        
+        let step: f64 = opt.cutoff/(opt.nbins as f64);
 
-    let step: f64 = opt.cutoff/(opt.nbins as f64);
-
-    let domain: Vec<f64> = (0..opt.nbins)
+        domain = (0..opt.nbins)
         .map(|x| step/2.0 + (x as f64)*step + opt.offset)
         .collect();
+        
+        lower_limit = (0..opt.nbins)
+        .map(|x| (x as f64)*step + opt.offset)
+        .collect();
+
+        upper_limit = (0..opt.nbins)
+        .map(|x| ((x+1) as f64)*step + opt.offset)
+        .collect();
+        
+    }
 
     let n_ens = opt.files.len();
 
     let summed_result: BinResult = opt.files.par_iter()
              .enumerate()
-             .map(|(i, x)| { eprintln!("Working on {}", i); sample_file(x, step, opt.nbins, opt.offset) })
+             .map(|(i, x)| { 
+                 if opt.verbosity > 0 { eprintln!("Working on {}", i); };
+                 sample_file(x, &lower_limit, &upper_limit) 
+             })
              .collect::<Vec<BinResult>>().iter()
              .fold(BinResult {dim: 0, n_particles: 0, count: vec![0; opt.nbins], count2: vec![0; opt.nbins] },
                    |acc, x| add_bins(acc, x));
@@ -298,7 +256,8 @@ fn main() {
     format_output(summed_result.count,
                   summed_result.count2,
                   domain,
-                  step,
+                  lower_limit,
+                  upper_limit,
                   summed_result.n_particles,
                   summed_result.dim,
                   n_ens,
