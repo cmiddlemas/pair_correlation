@@ -28,11 +28,11 @@ struct Opt {
     verbosity: u8,
 
     /// Gives the maximum radius to sample to
-    #[structopt(short, long)]
+    #[structopt(short, long, default_value = "1.0")]
     cutoff: f64,
 
     /// Gives the number of bins
-    #[structopt(short, long)]
+    #[structopt(short, long, default_value = "1")]
     nbins: usize,
 
     /// Gives the value of rho to assume
@@ -45,9 +45,10 @@ struct Opt {
     offset: f64,
 
     /// implements a really basic autoscaling of bin size
-    /// based on Poisson assumption
+    /// based on Poisson assumption, give the initial first
+    /// bin width, overrides --nbins
     #[structopt(long)]
-    autoscale: bool,
+    autoscale: Option<f64>,
 
     /// Gives the list of files, interpreted as ensemble average
     #[structopt(parse(from_os_str))]
@@ -105,11 +106,20 @@ struct BinResult {
 }
 
 // Strategy for normalization taken from Ge's code
-fn sphere_vol(dim: usize, r: f64) ->f64 {
+fn sphere_vol(dim: usize, r: f64) -> f64 {
     match dim {
         1 => 2.0*r,
         2 => PI*r*r,
         3 => 4.0*PI*r*r*r/3.0,
+        _ => panic!("Dimension not implemented!"),
+    }
+}
+
+fn sphere_radius(dim: usize, vol: f64) -> f64{
+    match dim {
+        1 => 0.5*vol,
+        2 => (vol/PI).sqrt(),
+        3 => (3.0*vol/(4.0*PI)).powf(1.0/3.0),
         _ => panic!("Dimension not implemented!"),
     }
 }
@@ -243,10 +253,28 @@ fn main() {
     let lower_limit: Vec<f64>;
     let upper_limit: Vec<f64>;
     
-    if opt.autoscale { //Bins that scale with surface area of sphere
-        domain = Vec::new();
-        lower_limit = Vec::new();
-        upper_limit = Vec::new();
+    if let Some(first_bin_width) = opt.autoscale { //Bins that scale with surface area of sphere
+        
+        let first_config = Config::parse(&opt.files[0]);
+        let dim = first_config.dim;
+        
+        let bin_vol: f64 = sphere_vol(dim, opt.offset+first_bin_width)
+            - sphere_vol(dim, opt.offset);
+
+        let mut r_vec = vec![opt.offset, opt.offset+first_bin_width];
+        while *r_vec.last().unwrap() < opt.cutoff {
+            let outer_vol = bin_vol + sphere_vol(dim, *r_vec.last().unwrap());
+            r_vec.push(sphere_radius(dim, outer_vol));
+        }
+        r_vec.pop(); // went one too high in previous loop
+
+        // https://stackoverflow.com/questions/54273751/rust-and-vec-iterator-how-to-filter
+        lower_limit = r_vec[0..r_vec.len()-1].iter().cloned().collect();
+        upper_limit = r_vec[1..r_vec.len()].iter().cloned().collect();
+        domain = (lower_limit.iter()).zip(upper_limit.iter())
+                               .map(|(&l, &u)| (l+u)/2.0)
+                               .collect();
+    
     } else { // Equal width bins
         
         let step: f64 = opt.cutoff/(opt.nbins as f64);
@@ -267,6 +295,8 @@ fn main() {
 
     let n_ens = opt.files.len();
 
+    let n_bins = domain.len();
+
     let summed_result: BinResult = opt.files.par_iter()
              .enumerate()
              .map(|(i, x)| { 
@@ -274,7 +304,7 @@ fn main() {
                  sample_file(x, &lower_limit, &upper_limit) 
              })
              .collect::<Vec<BinResult>>().iter()
-             .fold(BinResult {dim: 0, n_particles: 0, count: vec![0; opt.nbins], count2: vec![0; opt.nbins] },
+             .fold(BinResult {dim: 0, n_particles: 0, count: vec![0; n_bins], count2: vec![0; n_bins] },
                    |acc, x| add_bins(acc, x));
 
     format_output(summed_result.count,
