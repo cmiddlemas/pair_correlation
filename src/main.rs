@@ -284,6 +284,10 @@ fn main() {
         domain = (lower_limit.iter()).zip(upper_limit.iter())
                                .map(|(&l, &u)| (l+u)/2.0)
                                .collect();
+
+        if opt.verbosity > 0 {
+            eprintln!("Using {} bins", domain.len());
+        }
     
     } else { // Equal width bins
         
@@ -317,11 +321,12 @@ fn main() {
 
 
     if let Some(blocks) = opt.blocks.clone() {
-        for size in blocks {
+        let mut blocked_results: Vec<BinResult> = Vec::new();
+        for size in blocks.clone() {
             if opt.verbosity > 0 {
                 println!("----- {} block -----", size);
             }
-            let blocked_results: Vec<BinResult> = individual_results.iter()
+            blocked_results = individual_results.iter()
                     .chunks(size).into_iter() // Split into blocks
                     .map(|x| 
                          x.fold(BinResult {dim: 0, n_particles: 0, count: vec![0; n_bins], count2: vec![0; n_bins] },
@@ -349,6 +354,23 @@ fn main() {
                 println!("sue {} {}", size, sum_of_variance);
             }
         }
+
+        if opt.verbosity > 0 {
+            println!("----- Drift analysis, using final block size -----");
+            for result in blocked_results.iter() {
+                format_output(&result.count,
+                      &result.count2,
+                      &domain,
+                      &lower_limit,
+                      &upper_limit,
+                      result.n_particles,
+                      result.dim,
+                      *blocks.last().unwrap(),
+                      opt.rho
+                );
+            }
+        }
+
     } else {
         let summed_result: BinResult = individual_results.iter()
              .fold(BinResult {dim: 0, n_particles: 0, count: vec![0; n_bins], count2: vec![0; n_bins] },
