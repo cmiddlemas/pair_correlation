@@ -5,7 +5,7 @@ use std::fs::File;
 use std::f64::consts::PI;
 use structopt::StructOpt;
 use rayon::prelude::*;
-use itertools::izip;
+use itertools::{izip, Itertools};
 
 mod measure_distance;
 
@@ -49,6 +49,10 @@ struct Opt {
     /// bin width, overrides --nbins
     #[structopt(long)]
     autoscale: Option<f64>,
+
+    /// Give the block sizes to compute for uncertainty analysis
+    #[structopt(long)]
+    blocks: Option<Vec<usize>>,
 
     /// Gives the list of files, interpreted as ensemble average
     #[structopt(parse(from_os_str))]
@@ -126,21 +130,23 @@ fn sphere_radius(dim: usize, vol: f64) -> f64{
 
 // Takes bin count and converts it to an approx
 // to g_2 by normalization
-fn format_output(count: Vec<usize>,
-                 count2: Vec<usize>,
-                 domain: Vec<f64>,
-                 lower_limit: Vec<f64>,
-                 upper_limit: Vec<f64>,
+// Return sum of variances for block testing if needed
+fn format_output(count: &[usize],
+                 count2: &[usize],
+                 domain: &[f64],
+                 lower_limit: &[f64],
+                 upper_limit: &[f64],
                  n_particles: usize,
                  dim: usize,
                  n_ens: usize,
-                 rho: f64)
+                 rho: f64) -> f64
 {
-    for (c, c2, r, l, u) in izip!(count.iter(),
-                                  count2.iter(),
-                                  domain.iter(),
-                                  lower_limit.iter(),
-                                  upper_limit.iter()) 
+    let mut sum_of_variance = 0.0;
+    for (c, c2, r, l, u) in izip!(count,
+                                  count2,
+                                  domain,
+                                  lower_limit,
+                                  upper_limit) 
     {
         let width = *u - *l;
         // 2*count/(n_particles*n_ens) = rho s1(r) g2(r) dr
@@ -158,7 +164,9 @@ fn format_output(count: Vec<usize>,
         let std_err_g2 = var_g2.sqrt()/((n_ens as f64).sqrt());
         let poisson_est = (*c as f64).sqrt()*g2_coeff/f_n_ens;
         println!("{} {} {} {} {}", r, g2, std_err_g2, poisson_est, width);
+        sum_of_variance += std_err_g2.powi(2);
     }
+    sum_of_variance
 }
 
 // use binary search
@@ -249,6 +257,8 @@ fn main() {
     eprintln!("Start program:\n");
 
     let opt = Opt::from_args();
+    eprintln!("{:?}", opt);
+
     let domain: Vec<f64>;
     let lower_limit: Vec<f64>;
     let upper_limit: Vec<f64>;
@@ -297,24 +307,62 @@ fn main() {
 
     let n_bins = domain.len();
 
-    let summed_result: BinResult = opt.files.par_iter()
-             .enumerate()
-             .map(|(i, x)| { 
-                 if opt.verbosity > 0 { eprintln!("Working on {}", i); };
-                 sample_file(x, &lower_limit, &upper_limit) 
-             })
-             .collect::<Vec<BinResult>>().iter()
+    let individual_results: Vec<BinResult> = opt.files.par_iter()
+            .enumerate()
+            .map(|(i, x)| { 
+                if opt.verbosity > 1 { eprintln!("Working on {}", i); };
+                sample_file(x, &lower_limit, &upper_limit) 
+            })
+            .collect();
+
+
+    if let Some(blocks) = opt.blocks.clone() {
+        for size in blocks {
+            if opt.verbosity > 0 {
+                println!("----- {} block -----", size);
+            }
+            let blocked_results: Vec<BinResult> = individual_results.iter()
+                    .chunks(size).into_iter() // Split into blocks
+                    .map(|x| 
+                         x.fold(BinResult {dim: 0, n_particles: 0, count: vec![0; n_bins], count2: vec![0; n_bins] },
+                            |acc, x| add_bins(acc, x)))
+                    .collect();
+
+            // Original count2 is ignored and blocked value computed
+            let final_result: BinResult = blocked_results.iter()
+                    .fold(BinResult {dim: 0, n_particles: 0, count: vec![0; n_bins], count2: vec![0; n_bins] },
+                        |acc, x| add_bins(acc, x));
+
+            let sum_of_variance = format_output(&final_result.count,
+                      &final_result.count2,
+                      &domain,
+                      &lower_limit,
+                      &upper_limit,
+                      final_result.n_particles*size,
+                      final_result.dim,
+                      n_ens/size,
+                      opt.rho
+            );
+
+            if opt.verbosity > 0 {
+                println!("Summary uncertainty estimate (block size, statistic)");
+                println!("sue {} {}", size, sum_of_variance);
+            }
+        }
+    } else {
+        let summed_result: BinResult = individual_results.iter()
              .fold(BinResult {dim: 0, n_particles: 0, count: vec![0; n_bins], count2: vec![0; n_bins] },
                    |acc, x| add_bins(acc, x));
 
-    format_output(summed_result.count,
-                  summed_result.count2,
-                  domain,
-                  lower_limit,
-                  upper_limit,
-                  summed_result.n_particles,
-                  summed_result.dim,
-                  n_ens,
-                  opt.rho
-    );
+        format_output(&summed_result.count,
+                      &summed_result.count2,
+                      &domain,
+                      &lower_limit,
+                      &upper_limit,
+                      summed_result.n_particles,
+                      summed_result.dim,
+                      n_ens,
+                      opt.rho
+        );
+    }
 }
