@@ -257,7 +257,9 @@ fn main() {
     eprintln!("Start program:\n");
 
     let opt = Opt::from_args();
-    eprintln!("{:?}", opt);
+    if opt.verbosity > 0 {
+        eprintln!("{:?}", opt);
+    }
 
     let domain: Vec<f64>;
     let lower_limit: Vec<f64>;
