@@ -2,14 +2,15 @@ use std::path::PathBuf;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::fs::File;
-use std::f64::consts::PI;
 use structopt::StructOpt;
 use rayon::prelude::*;
 use itertools::{izip, Itertools};
 
 mod measure_distance;
+mod simple_math;
 
 use measure_distance::measure_distance;
+use simple_math::{cell_volume, sphere_vol, sphere_radius};
 
 /// Reads a Ge file and outputs
 /// the pair correlation function on
@@ -18,6 +19,8 @@ use measure_distance::measure_distance;
 /// Warning: program assumes all numeric
 /// conversions are trivially valid, don't
 /// put in absurdly large numbers
+/// Currently assumes all configurations
+/// have the same number density
 #[derive(StructOpt, Debug)]
 #[structopt(name = "pair_correlation")]
 struct Opt {
@@ -34,10 +37,6 @@ struct Opt {
     /// Gives the number of bins
     #[structopt(short, long, default_value = "1")]
     nbins: usize,
-
-    /// Gives the value of rho to assume
-    #[structopt(long, default_value = "1.0")]
-    rho: f64,
 
     /// Gives an offset for every bin, i.e. makes a gap around the origin,
     /// to inhibit divide by s_1(r) effect
@@ -107,25 +106,6 @@ struct BinResult {
     n_particles: usize,
     count: Vec<usize>,
     count2: Vec<usize>, // accumulator for square of count results
-}
-
-// Strategy for normalization taken from Ge's code
-fn sphere_vol(dim: usize, r: f64) -> f64 {
-    match dim {
-        1 => 2.0*r,
-        2 => PI*r*r,
-        3 => 4.0*PI*r*r*r/3.0,
-        _ => panic!("Dimension not implemented!"),
-    }
-}
-
-fn sphere_radius(dim: usize, vol: f64) -> f64{
-    match dim {
-        1 => 0.5*vol,
-        2 => (vol/PI).sqrt(),
-        3 => (3.0*vol/(4.0*PI)).powf(1.0/3.0),
-        _ => panic!("Dimension not implemented!"),
-    }
 }
 
 // Takes bin count and converts it to an approx
@@ -261,13 +241,17 @@ fn main() {
         eprintln!("{:?}", opt);
     }
 
+    let first_config = Config::parse(&opt.files[0]);
+
+    let rho: f64 = (first_config.n_particles as f64)
+                    / (cell_volume(first_config.dim, &first_config.unit_cell));
+
     let domain: Vec<f64>;
     let lower_limit: Vec<f64>;
     let upper_limit: Vec<f64>;
     
     if let Some(first_bin_width) = opt.autoscale { //Bins that scale with surface area of sphere
         
-        let first_config = Config::parse(&opt.files[0]);
         let dim = first_config.dim;
         
         let bin_vol: f64 = sphere_vol(dim, opt.offset+first_bin_width)
@@ -348,7 +332,7 @@ fn main() {
                       final_result.n_particles*size,
                       final_result.dim,
                       n_ens/size,
-                      opt.rho
+                      rho
             );
 
             if opt.verbosity > 0 {
@@ -368,7 +352,7 @@ fn main() {
                       result.n_particles,
                       result.dim,
                       *blocks.last().unwrap(),
-                      opt.rho
+                      rho
                 );
             }
         }
@@ -386,7 +370,7 @@ fn main() {
                       summed_result.n_particles,
                       summed_result.dim,
                       n_ens,
-                      opt.rho
+                      rho
         );
     }
 }
