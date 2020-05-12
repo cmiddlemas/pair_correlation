@@ -1,16 +1,16 @@
 use std::path::PathBuf;
-use std::io::prelude::*;
-use std::io::BufReader;
-use std::fs::File;
 use structopt::StructOpt;
 use rayon::prelude::*;
 use itertools::{izip, Itertools};
 
 mod measure_distance;
 mod simple_math;
+mod config;
+mod binning;
 
-use measure_distance::measure_distance;
 use simple_math::{cell_volume, sphere_vol, sphere_radius};
+use config::Config;
+use binning::{BinResult, sample_file, add_bins};
 
 /// Reads a Ge file and outputs
 /// the pair correlation function on
@@ -59,55 +59,6 @@ struct Opt {
 
 }
 
-// Holds the result of parsing a configuration
-pub struct Config {
-    dim: usize,
-    n_particles: usize,
-    unit_cell: Vec<f64>,
-    coords: Vec<f64>
-}
-
-impl Config {
-    // Parses Ge's file format into a Config
-    fn parse(path: &PathBuf) -> Config {
-        let mut input = BufReader::new(File::open(path).unwrap());
-        let mut line = String::new();
-        input.read_line(&mut line).unwrap();
-
-        let dim: usize = line.trim().parse().unwrap();
-        let mut unit_cell = Vec::new();
-        let mut coords = Vec::new();
-        let mut n_particles = 0;
-        
-        for (i, line) in input.lines().enumerate() {
-            if i < dim {
-                for (j, token) in line.unwrap().split_whitespace().enumerate() {
-                    if j < dim {
-                        unit_cell.push(token.parse().unwrap());
-                    }
-                }
-            } else {
-                for (j, token) in line.unwrap().split_whitespace().enumerate() {
-                    if j < dim {
-                        coords.push(token.parse().unwrap());
-                    }
-                }
-                n_particles += 1;
-            }
-        }
-
-        Config { dim, n_particles, unit_cell , coords }
-    }
-}
-
-// Holds the data from binning a configuration
-struct BinResult {
-    dim: usize,
-    n_particles: usize,
-    count: Vec<usize>,
-    count2: Vec<usize>, // accumulator for square of count results
-}
-
 // Takes bin count and converts it to an approx
 // to g_2 by normalization
 // Return sum of variances for block testing if needed
@@ -149,63 +100,6 @@ fn format_output(count: &[usize],
     sum_of_variance
 }
 
-// use binary search
-fn bin_distance(r: f64, count: &mut [usize], lower_limit: &[f64], upper_limit: &[f64]) {
-    let length = count.len();
-    let mut lower_idx = 0;
-    let mut upper_idx = length - 1;
-    let mut idx = (upper_idx - lower_idx)/2;
-    loop {
-        let l = lower_limit[idx];
-        let u = upper_limit[idx];
-        if r >= l && r < u {
-            count[idx] += 1;
-            break;
-        } else { //continue search
-            if lower_idx == upper_idx {
-                break; // r not in binning range
-            } else if r >= l {
-                lower_idx = idx + 1;
-                idx = lower_idx + (upper_idx - lower_idx)/2;
-            } else {
-                upper_idx = idx - 1;
-                idx = lower_idx + (upper_idx - lower_idx)/2;
-            }
-        }
-    }
-}
-
-fn sample_file(path: &PathBuf,
-               lower_limit: &[f64],
-               upper_limit: &[f64]
-) -> BinResult
-{
-    let config = Config::parse(path);
-    
-    let mut count = vec![0; lower_limit.len()];
-
-    for i in 0..config.n_particles {
-        for j in 0..i {
-            let r = measure_distance(&config, i, j);
-            bin_distance(r, &mut count, lower_limit, upper_limit);
-        }
-    }
-
-    BinResult {dim: config.dim, n_particles: config.n_particles, count, count2: Vec::new() }
-}
-
-// Takes the right term as the truth for dim and n_particles
-// Sums the histogram
-fn add_bins(mut acc: BinResult, x: &BinResult) -> BinResult {
-    for (x, x2, y) in izip!(acc.count.iter_mut(), acc.count2.iter_mut(), x.count.iter()) {
-        *x += y;
-        *x2 += y*y;
-    }
-    acc.dim = x.dim;
-    acc.n_particles = x.n_particles;
-    acc
-}
-
 // From 
 // https://stackoverflow.com/questions/39204908/how-to-check-release-debug-builds-using-cfg-in-rust
 // and
@@ -243,9 +137,12 @@ fn main() {
 
     let first_config = Config::parse(&opt.files[0]);
 
+    // Assume that every configuration has the same
+    // density as the first
     let rho: f64 = (first_config.n_particles as f64)
                     / (cell_volume(first_config.dim, &first_config.unit_cell));
 
+    // Make the bins
     let domain: Vec<f64>;
     let lower_limit: Vec<f64>;
     let upper_limit: Vec<f64>;
@@ -297,6 +194,7 @@ fn main() {
 
     let n_bins = domain.len();
 
+    // Bin each config separately
     let individual_results: Vec<BinResult> = opt.files.par_iter()
             .enumerate()
             .map(|(i, x)| { 
@@ -306,6 +204,7 @@ fn main() {
             .collect();
 
 
+    // Block averaging and variance analysis
     if let Some(blocks) = opt.blocks.clone() {
         let mut blocked_results: Vec<BinResult> = Vec::new();
         for size in blocks.clone() {
@@ -357,7 +256,7 @@ fn main() {
             }
         }
 
-    } else {
+    } else { // Simple averaging and variance analysis, assuming independence
         let summed_result: BinResult = individual_results.iter()
              .fold(BinResult {dim: 0, n_particles: 0, count: vec![0; n_bins], count2: vec![0; n_bins] },
                    |acc, x| add_bins(acc, x));

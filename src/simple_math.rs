@@ -34,4 +34,3 @@ pub fn sphere_radius(dim: usize, vol: f64) -> f64{
         _ => panic!("Dimension not implemented!"),
     }
 }
-
