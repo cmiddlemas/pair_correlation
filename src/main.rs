@@ -86,6 +86,7 @@ fn format_output(count: &[usize],
         // Sample variance reminder:
         // https://en.wikipedia.org/wiki/Variance
         let ens_var_c = (*c2 as f64)/(f_n_ens - 1.0) - ens_c*ens_c*f_n_ens/(f_n_ens - 1.0);
+        // Strategy for normalization taken from Ge's code
         let g2_coeff = 2.0
             /((sphere_vol(dim, *u) - sphere_vol(dim, *l))
                 *rho*(n_particles as f64)

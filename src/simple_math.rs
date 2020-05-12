@@ -16,7 +16,6 @@ pub fn cell_volume(dim: usize, unit_cell: &[f64]) -> f64 {
     }
 }
 
-// Strategy for normalization taken from Ge's code
 pub fn sphere_vol(dim: usize, r: f64) -> f64 {
     match dim {
         1 => 2.0*r,
