@@ -1,7 +1,62 @@
 use std::path::PathBuf;
+use crate::Opt;
 use crate::config::Config;
 use crate::measure_distance::measure_distance;
+use crate::simple_math::{sphere_vol, sphere_radius};
 use itertools::izip;
+
+// Returns (domain, lower_limit, upper_limit),
+// where domain is given as the midpoint of the bin
+pub fn make_bins(opt: &Opt, first_config: &Config)
+    -> (Vec<f64>, Vec<f64>, Vec<f64>)
+{
+    let domain: Vec<f64>;
+    let lower_limit: Vec<f64>;
+    let upper_limit: Vec<f64>;
+    if let Some(first_bin_width) = opt.autoscale { //Bins that scale with surface area of sphere
+        
+        let dim = first_config.dim;
+        
+        let bin_vol: f64 = sphere_vol(dim, opt.offset+first_bin_width)
+            - sphere_vol(dim, opt.offset);
+
+        let mut r_vec = vec![opt.offset, opt.offset+first_bin_width];
+        while *r_vec.last().unwrap() < opt.cutoff {
+            let outer_vol = bin_vol + sphere_vol(dim, *r_vec.last().unwrap());
+            r_vec.push(sphere_radius(dim, outer_vol));
+        }
+        r_vec.pop(); // went one too high in previous loop
+
+        // https://stackoverflow.com/questions/54273751/rust-and-vec-iterator-how-to-filter
+        lower_limit = r_vec[0..r_vec.len()-1].iter().cloned().collect();
+        upper_limit = r_vec[1..r_vec.len()].iter().cloned().collect();
+        domain = (lower_limit.iter()).zip(upper_limit.iter())
+                               .map(|(&l, &u)| (l+u)/2.0)
+                               .collect();
+
+        if opt.verbosity > 0 {
+            eprintln!("Using {} bins", domain.len());
+        }
+    
+    } else { // Equal width bins
+        
+        let step: f64 = opt.cutoff/(opt.nbins as f64);
+
+        domain = (0..opt.nbins)
+        .map(|x| step/2.0 + (x as f64)*step + opt.offset)
+        .collect();
+        
+        lower_limit = (0..opt.nbins)
+        .map(|x| (x as f64)*step + opt.offset)
+        .collect();
+
+        upper_limit = (0..opt.nbins)
+        .map(|x| ((x+1) as f64)*step + opt.offset)
+        .collect();
+        
+    }
+    (domain, lower_limit, upper_limit)
+}
 
 // Holds the data from binning a configuration
 pub struct BinResult {
@@ -67,4 +122,3 @@ pub fn add_bins(mut acc: BinResult, x: &BinResult) -> BinResult {
     acc.n_particles = x.n_particles;
     acc
 }
-

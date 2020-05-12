@@ -8,9 +8,9 @@ mod simple_math;
 mod config;
 mod binning;
 
-use simple_math::{cell_volume, sphere_vol, sphere_radius};
+use simple_math::{cell_volume, sphere_vol};
 use config::Config;
-use binning::{BinResult, sample_file, add_bins};
+use binning::{make_bins, BinResult, sample_file, add_bins};
 
 /// Reads a Ge file and outputs
 /// the pair correlation function on
@@ -23,7 +23,7 @@ use binning::{BinResult, sample_file, add_bins};
 /// have the same number density
 #[derive(StructOpt, Debug)]
 #[structopt(name = "pair_correlation")]
-struct Opt {
+pub struct Opt {
    
     // From https://github.com/TeXitoi/structopt
     /// Verbosity of monitoring output
@@ -143,56 +143,11 @@ fn main() {
                     / (cell_volume(first_config.dim, &first_config.unit_cell));
 
     // Make the bins
-    let domain: Vec<f64>;
-    let lower_limit: Vec<f64>;
-    let upper_limit: Vec<f64>;
-    
-    if let Some(first_bin_width) = opt.autoscale { //Bins that scale with surface area of sphere
-        
-        let dim = first_config.dim;
-        
-        let bin_vol: f64 = sphere_vol(dim, opt.offset+first_bin_width)
-            - sphere_vol(dim, opt.offset);
-
-        let mut r_vec = vec![opt.offset, opt.offset+first_bin_width];
-        while *r_vec.last().unwrap() < opt.cutoff {
-            let outer_vol = bin_vol + sphere_vol(dim, *r_vec.last().unwrap());
-            r_vec.push(sphere_radius(dim, outer_vol));
-        }
-        r_vec.pop(); // went one too high in previous loop
-
-        // https://stackoverflow.com/questions/54273751/rust-and-vec-iterator-how-to-filter
-        lower_limit = r_vec[0..r_vec.len()-1].iter().cloned().collect();
-        upper_limit = r_vec[1..r_vec.len()].iter().cloned().collect();
-        domain = (lower_limit.iter()).zip(upper_limit.iter())
-                               .map(|(&l, &u)| (l+u)/2.0)
-                               .collect();
-
-        if opt.verbosity > 0 {
-            eprintln!("Using {} bins", domain.len());
-        }
-    
-    } else { // Equal width bins
-        
-        let step: f64 = opt.cutoff/(opt.nbins as f64);
-
-        domain = (0..opt.nbins)
-        .map(|x| step/2.0 + (x as f64)*step + opt.offset)
-        .collect();
-        
-        lower_limit = (0..opt.nbins)
-        .map(|x| (x as f64)*step + opt.offset)
-        .collect();
-
-        upper_limit = (0..opt.nbins)
-        .map(|x| ((x+1) as f64)*step + opt.offset)
-        .collect();
-        
-    }
-
-    let n_ens = opt.files.len();
-
+    // Bin values between lower_limit <= val < upper_limit
+    // domain is given as midpoint
+    let (domain, lower_limit, upper_limit) = make_bins(&opt, &first_config);
     let n_bins = domain.len();
+    let n_ens = opt.files.len();
 
     // Bin each config separately
     let individual_results: Vec<BinResult> = opt.files.par_iter()
@@ -203,7 +158,8 @@ fn main() {
             })
             .collect();
 
-
+    // Combine each configuration's results through either
+    // a block averaging analysis or naive analysis
     // Block averaging and variance analysis
     if let Some(blocks) = opt.blocks.clone() {
         let mut blocked_results: Vec<BinResult> = Vec::new();
