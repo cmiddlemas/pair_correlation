@@ -1,0 +1,11 @@
+Todo list.
+
+TESTING
+    Add auto testing framework in style of compute_nn
+
+FEATURES
+    Add in way to choose bins such that they have approximately
+        equal areas
+    Add some heuristic for choosing # of bins
+
+BUGS
