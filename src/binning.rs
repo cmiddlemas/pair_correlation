@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use crate::Opt;
 use crate::config::Config;
 use crate::measure_distance::measure_distance;
-use crate::simple_math::{sphere_vol, sphere_radius};
+use crate::simple_math::{sphere_vol, sphere_radius, cell_volume};
 use itertools::izip;
 
 // Returns (domain, lower_limit, upper_limit),
@@ -62,6 +62,7 @@ pub fn make_bins(opt: &Opt, first_config: &Config)
 pub struct BinResult {
     pub dim: usize,
     pub n_particles: usize,
+    pub rho: f64,
     pub count: Vec<usize>,
     pub count2: Vec<usize>, // accumulator for square of count results
 }
@@ -108,17 +109,26 @@ pub fn sample_file(path: &PathBuf,
         }
     }
 
-    BinResult {dim: config.dim, n_particles: config.n_particles, count, count2: Vec::new() }
+    let c_vol = cell_volume(config.dim, &config.unit_cell);
+
+    BinResult {
+        dim: config.dim,
+        n_particles: config.n_particles,
+        rho: (config.n_particles as f64)/c_vol,
+        count,
+        count2: Vec::new()
+    }
 }
 
 // Takes the right term as the truth for dim and n_particles
 // Sums the histogram
-pub fn add_bins(mut acc: BinResult, x: &BinResult) -> BinResult {
-    for (x, x2, y) in izip!(acc.count.iter_mut(), acc.count2.iter_mut(), x.count.iter()) {
+pub fn add_bins(mut acc: BinResult, b: &BinResult) -> BinResult {
+    for (x, x2, y) in izip!(acc.count.iter_mut(), acc.count2.iter_mut(), b.count.iter()) {
         *x += y;
         *x2 += y*y;
     }
-    acc.dim = x.dim;
-    acc.n_particles = x.n_particles;
+    acc.dim = b.dim;
+    acc.n_particles = b.n_particles;
+    acc.rho += b.rho;
     acc
 }
