@@ -65,12 +65,13 @@ fn format_output(count: &[usize],
                  domain: &[f64],
                  lower_limit: &[f64],
                  upper_limit: &[f64],
-                 n_particles: usize,
+                 n_obs: usize,
                  dim: usize,
                  n_ens: usize,
                  rho: f64) -> f64
 {
     let mut sum_of_variance = 0.0;
+    let eff_n_particles = (n_obs as f64)/(n_ens as f64);
     for (c, c2, r, l, u) in izip!(count,
                                   count2,
                                   domain,
@@ -78,7 +79,7 @@ fn format_output(count: &[usize],
                                   upper_limit) 
     {
         let width = *u - *l;
-        // 2*count/(n_particles*n_ens) = rho s1(r) g2(r) dr
+        // 2*count/(eff_n_particles*n_ens) = rho s1(r) g2(r) dr
         let f_n_ens = n_ens as f64;
         let ens_c = (*c as f64)/f_n_ens;
         // Sample variance reminder:
@@ -87,7 +88,7 @@ fn format_output(count: &[usize],
         // Strategy for normalization taken from Ge's code
         let g2_coeff = 2.0
             /((sphere_vol(dim, *u) - sphere_vol(dim, *l))
-                *rho*(n_particles as f64)
+                *rho*(eff_n_particles as f64)
             );
         let g2 = ens_c*g2_coeff;
         let var_g2 = ens_var_c*g2_coeff*g2_coeff;
@@ -164,13 +165,13 @@ fn main() {
             blocked_results = individual_results.iter()
                     .chunks(size).into_iter() // Split into blocks
                     .map(|x| 
-                         x.fold(BinResult {dim: 0, n_particles: 0, rho: 0.0, count: vec![0; n_bins], count2: vec![0; n_bins] },
+                         x.fold(BinResult {dim: 0, n_obs: 0, rho: 0.0, count: vec![0; n_bins], count2: vec![0; n_bins] },
                             |acc, x| add_bins(acc, x)))
                     .collect();
 
             // Original count2 is ignored and blocked value computed
             let final_result: BinResult = blocked_results.iter()
-                    .fold(BinResult {dim: 0, n_particles: 0, rho: 0.0, count: vec![0; n_bins], count2: vec![0; n_bins] },
+                    .fold(BinResult {dim: 0, n_obs: 0, rho: 0.0, count: vec![0; n_bins], count2: vec![0; n_bins] },
                         |acc, x| add_bins(acc, x));
 
             let sum_of_variance = format_output(&final_result.count,
@@ -178,7 +179,7 @@ fn main() {
                       &domain,
                       &lower_limit,
                       &upper_limit,
-                      final_result.n_particles*size,
+                      final_result.n_obs,
                       final_result.dim,
                       n_ens/size,
                       final_result.rho/(n_ens as f64)
@@ -199,7 +200,7 @@ fn main() {
                       &domain,
                       &lower_limit,
                       &upper_limit,
-                      result.n_particles,
+                      result.n_obs,
                       result.dim,
                       b_sz,
                       result.rho/(b_sz as f64)
@@ -209,7 +210,7 @@ fn main() {
 
     } else { // Simple averaging and variance analysis, assuming independence
         let summed_result: BinResult = individual_results.iter()
-             .fold(BinResult {dim: 0, n_particles: 0, rho: 0.0, count: vec![0; n_bins], count2: vec![0; n_bins] },
+             .fold(BinResult {dim: 0, n_obs: 0, rho: 0.0, count: vec![0; n_bins], count2: vec![0; n_bins] },
                    |acc, x| add_bins(acc, x));
 
         format_output(&summed_result.count,
@@ -217,7 +218,7 @@ fn main() {
                       &domain,
                       &lower_limit,
                       &upper_limit,
-                      summed_result.n_particles,
+                      summed_result.n_obs,
                       summed_result.dim,
                       n_ens,
                       summed_result.rho/(n_ens as f64)

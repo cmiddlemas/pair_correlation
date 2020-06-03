@@ -7,5 +7,6 @@ FEATURES
     Add in way to choose bins such that they have approximately
         equal areas
     Add some heuristic for choosing # of bins
+    Add a more systematic way of handling grand canonical ensemble
 
 BUGS

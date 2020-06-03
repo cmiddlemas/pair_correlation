@@ -61,7 +61,7 @@ pub fn make_bins(opt: &Opt, first_config: &Config)
 // Holds the data from binning a configuration
 pub struct BinResult {
     pub dim: usize,
-    pub n_particles: usize,
+    pub n_obs: usize,
     pub rho: f64,
     pub count: Vec<usize>,
     pub count2: Vec<usize>, // accumulator for square of count results
@@ -113,7 +113,7 @@ pub fn sample_file(path: &PathBuf,
 
     BinResult {
         dim: config.dim,
-        n_particles: config.n_particles,
+        n_obs: config.n_particles,
         rho: (config.n_particles as f64)/c_vol,
         count,
         count2: Vec::new()
@@ -128,7 +128,7 @@ pub fn add_bins(mut acc: BinResult, b: &BinResult) -> BinResult {
         *x2 += y*y;
     }
     acc.dim = b.dim;
-    acc.n_particles = b.n_particles;
+    acc.n_obs += b.n_obs;
     acc.rho += b.rho;
     acc
 }
