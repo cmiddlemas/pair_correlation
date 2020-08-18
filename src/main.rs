@@ -55,6 +55,9 @@ pub struct Opt {
     #[structopt(parse(from_os_str))]
     files: Vec<PathBuf>,
 
+    /// If given, assume asc_monte_carlo file format
+    #[structopt(long)]
+    asc: bool,
 }
 
 // Takes bin count and converts it to an approx
@@ -135,7 +138,11 @@ fn main() {
         eprintln!("{:?}", opt);
     }
 
-    let first_config = Config::parse(&opt.files[0]);
+    let first_config = if opt.asc {
+        Config::parse_asc(&opt.files[0])
+    } else {
+        Config::parse(&opt.files[0])
+    };
 
     // Make the bins
     // Bin values between lower_limit <= val < upper_limit
@@ -149,7 +156,7 @@ fn main() {
             .enumerate()
             .map(|(i, x)| { 
                 if opt.verbosity > 1 { eprintln!("Working on {}", i); };
-                sample_file(x, &lower_limit, &upper_limit) 
+                sample_file(x, &lower_limit, &upper_limit, &opt) 
             })
             .collect();
 

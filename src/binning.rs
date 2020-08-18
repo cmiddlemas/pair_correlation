@@ -95,10 +95,15 @@ fn bin_distance(r: f64, count: &mut [usize], lower_limit: &[f64], upper_limit: &
 
 pub fn sample_file(path: &PathBuf,
                lower_limit: &[f64],
-               upper_limit: &[f64]
+               upper_limit: &[f64],
+               opt: &Opt
 ) -> BinResult
 {
-    let config = Config::parse(path);
+    let config = if opt.asc {
+        Config::parse_asc(path)
+    } else {
+        Config::parse(path)
+    };
     
     let mut count = vec![0; lower_limit.len()];
 

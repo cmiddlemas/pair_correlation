@@ -40,6 +40,33 @@ impl Config {
             }
         }
 
-        Config { dim, n_particles, unit_cell , coords }
+        Config { dim, n_particles, unit_cell, coords }
+    }
+
+    pub fn parse_asc(path: &PathBuf) -> Config {
+        let mut input = BufReader::new(File::open(path).unwrap());
+        let mut line = String::new();
+        input.read_line(&mut line).unwrap();
+
+        let dim: usize = line.trim()
+                             .split_whitespace()
+                             .next().unwrap()
+                             .parse().unwrap();
+        input.read_line(&mut line).unwrap();
+        let unit_cell = line.trim()
+                            .split_whitespace()
+                            .map(|x| x.parse().unwrap())
+                            .collect();
+        
+        let mut coords = Vec::new();
+        let mut n_particles = 0;
+        for line in input.lines() {
+            coords.extend(
+                line.unwrap().trim().split_whitespace().map(|x| x.parse::<f64>().unwrap())
+            );
+            n_particles += 1;
+        }
+        
+        Config { dim, n_particles, unit_cell, coords }
     }
 }
