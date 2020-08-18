@@ -15,10 +15,10 @@ impl Config {
     // Parses Ge's file format into a Config
     pub fn parse(path: &PathBuf) -> Config {
         let mut input = BufReader::new(File::open(path).unwrap());
-        let mut line = String::new();
-        input.read_line(&mut line).unwrap();
+        let mut buf = String::new();
+        input.read_line(&mut buf).unwrap();
 
-        let dim: usize = line.trim().parse().unwrap();
+        let dim: usize = buf.trim().parse().unwrap();
         let mut unit_cell = Vec::new();
         let mut coords = Vec::new();
         let mut n_particles = 0;
@@ -45,18 +45,20 @@ impl Config {
 
     pub fn parse_asc(path: &PathBuf) -> Config {
         let mut input = BufReader::new(File::open(path).unwrap());
-        let mut line = String::new();
-        input.read_line(&mut line).unwrap();
-
-        let dim: usize = line.trim()
-                             .split_whitespace()
-                             .next().unwrap()
-                             .parse().unwrap();
-        input.read_line(&mut line).unwrap();
-        let unit_cell = line.trim()
+        let mut buf = String::new();
+        
+        input.read_line(&mut buf).unwrap();
+        let dim: usize = buf.trim()
                             .split_whitespace()
-                            .map(|x| x.parse().unwrap())
-                            .collect();
+                            .next().unwrap()
+                            .parse().unwrap();
+        buf.clear();
+
+        input.read_line(&mut buf).unwrap();
+        let unit_cell = buf.trim()
+                           .split_whitespace()
+                           .map(|x| x.parse().unwrap())
+                           .collect();
         
         let mut coords = Vec::new();
         let mut n_particles = 0;
