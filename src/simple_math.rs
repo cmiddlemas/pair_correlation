@@ -6,11 +6,11 @@ pub fn cell_volume(dim: usize, unit_cell: &[f64]) -> f64 {
         1 => unit_cell[0],
         2 => {
             let cell_mat = Matrix2::from_column_slice(unit_cell);
-            cell_mat.determinant()
+            cell_mat.determinant().abs()
         }
         3 => {
             let cell_mat = Matrix3::from_column_slice(unit_cell);
-            cell_mat.determinant()
+            cell_mat.determinant().abs()
         }
         _ => panic!("Dimension not implemented!"),
     }

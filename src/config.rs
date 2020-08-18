@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::fs::File;
+use nalgebra::{Matrix2, Vector2, Matrix3, Vector3};
 
 // Holds the result of parsing a configuration
 pub struct Config {
@@ -55,20 +56,45 @@ impl Config {
         buf.clear();
 
         input.read_line(&mut buf).unwrap();
-        let unit_cell = buf.trim()
+        let unit_cell: Vec<f64> = buf.trim()
                            .split_whitespace()
                            .map(|x| x.parse().unwrap())
                            .collect();
         
         let mut coords = Vec::new();
         let mut n_particles = 0;
-        for line in input.lines() {
-            coords.extend(
-                line.unwrap().trim().split_whitespace().map(|x| x.parse::<f64>().unwrap())
-            );
-            n_particles += 1;
+        match dim {
+            2 => {
+                let cell_mat = Matrix2::from_column_slice(&unit_cell);
+                for line in input.lines() {
+                    let rel_coord = Vector2::from_iterator(
+                                        line.unwrap().trim()
+                                            .split_whitespace()
+                                            .map(|x| x.parse::<f64>().unwrap())
+                                            .take(dim)
+                    );
+                    let global_coord = cell_mat*rel_coord;
+                    coords.extend_from_slice(global_coord.as_slice());
+                    n_particles += 1;
+                }
+            }
+            3 => {
+                let cell_mat = Matrix3::from_column_slice(&unit_cell);
+                for line in input.lines() {
+                    let rel_coord = Vector3::from_iterator(
+                                        line.unwrap().trim()
+                                            .split_whitespace()
+                                            .map(|x| x.parse::<f64>().unwrap())
+                                            .take(dim)
+                    );
+                    let global_coord = cell_mat*rel_coord;
+                    coords.extend_from_slice(global_coord.as_slice());
+                    n_particles += 1;
+                }
+            }
+            _ => unimplemented!(),
         }
-        
+
         Config { dim, n_particles, unit_cell, coords }
     }
 }
