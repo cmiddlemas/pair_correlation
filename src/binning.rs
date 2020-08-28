@@ -12,7 +12,7 @@ pub fn make_bins(opt: &Opt, first_config: &Config)
 {
     let domain: Vec<f64>;
     let lower_limit: Vec<f64>;
-    let upper_limit: Vec<f64>;
+    let mut upper_limit: Vec<f64>;
     if let Some(first_bin_width) = opt.autoscale { //Bins that scale with surface area of sphere
         
         let dim = first_config.dim;
@@ -40,18 +40,16 @@ pub fn make_bins(opt: &Opt, first_config: &Config)
     
     } else if opt.logarithm {
         
-        let log_interval = (opt.cutoff - opt.offset).log10();
-        let log_step = log_interval/(opt.nbins as f64);
-
-        domain = (0..opt.nbins)
-            .map(|x| 10.0f64.powf(log_step/2.0 + (x as f64)*log_step) + opt.offset)
-            .collect();
-        lower_limit = (0..opt.nbins)
-            .map(|x| 10.0f64.powf((x as f64)*log_step) + opt.offset)
-            .collect();
+        let interval = opt.cutoff - opt.offset;
+        domain = vec![0.0; opt.nbins];
+        lower_limit = vec![0.0; opt.nbins];
         upper_limit = (0..opt.nbins)
-            .map(|x| 10.0f64.powf(((x+1) as f64)*log_step) + opt.offset)
+            .map(|x| opt.offset + interval * 2.0f64.powi(-(x as i32)))
             .collect();
+        upper_limit.reverse();
+        if !opt.cumulative {
+            panic!("Logarithmic spacing currently only available for Z(r)!");
+        }
 
     } else { // Equal width bins
         
@@ -124,8 +122,16 @@ pub fn sample_file(path: &PathBuf,
     for i in 0..config.n_particles {
         for j in 0..i {
             let r = measure_distance(&config, i, j);
-            if r >= lower_limit[0] && r <= upper_limit[upper_limit.len() - 1] {
-                bin_distance(r, &mut count, lower_limit, upper_limit);
+            if opt.cumulative {
+                for (i, r_cut) in upper_limit.iter().enumerate() {
+                    if r <= *r_cut {
+                        count[i] += 1;
+                    }
+                }
+            } else {
+                if r >= lower_limit[0] && r <= upper_limit[upper_limit.len() - 1] {
+                    bin_distance(r, &mut count, lower_limit, upper_limit);
+                }
             }
         }
     }
@@ -157,6 +163,7 @@ pub fn add_bins(mut acc: BinResult, b: &BinResult) -> BinResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use structopt::StructOpt;
 
     #[test]
     #[should_panic]
@@ -218,6 +225,33 @@ mod tests {
         let mut count = [0usize, 0usize, 0usize];
         bin_distance(r, &mut count, &lower, &upper);
         assert!(count == [1, 0, 0]);
+    }
+
+    #[test]
+    fn logarithmic_binning() {
+        let args = vec!["pair_correlation", "--cumulative", "--logarithm", "-c", "1.0", "-n", "5"];
+        let opt = Opt::from_iter(args);
+        let config = Config { dim: 3, n_particles: 0, unit_cell: Vec::new(), coords: Vec::new() };
+        let (_, _, upper_limit) = make_bins(&opt, &config);
+        let expected: Vec<f64> = vec![0.125/2.0, 0.125, 0.25, 0.5, 1.0];
+        for (u, e) in upper_limit.iter().zip(expected.iter()) {
+            eprintln!("{}", *u);
+            assert!((*u - *e).abs()/(*e) < 1e-10);
+        }
+    }
+    
+    #[test]
+    fn logarithmic_binning_offset() {
+        let args = vec!["pair_correlation", "--cumulative", "--logarithm",
+                        "-c", "2.1", "-n", "5", "-o", "2.0"];
+        let opt = Opt::from_iter(args);
+        let config = Config { dim: 3, n_particles: 0, unit_cell: Vec::new(), coords: Vec::new() };
+        let (_, _, upper_limit) = make_bins(&opt, &config);
+        let expected: Vec<f64> = vec![1e-1/16.0+2.0, 1e-1/8.0+2.0, 1e-1/4.0+2.0, 1e-1/2.0+2.0, 1e-1+2.0];
+        for (u, e) in upper_limit.iter().zip(expected.iter()) {
+            eprintln!("{}", *u);
+            assert!((*u - *e).abs()/(*e) < 1e-10);
+        }
     }
 
 }
