@@ -68,6 +68,7 @@ pub struct BinResult {
 }
 
 // use binary search
+// will panic if r is not in any bin
 fn bin_distance(r: f64, count: &mut [usize], lower_limit: &[f64], upper_limit: &[f64]) {
     let length = count.len();
     let mut lower_idx = 0;
@@ -80,9 +81,7 @@ fn bin_distance(r: f64, count: &mut [usize], lower_limit: &[f64], upper_limit: &
             count[idx] += 1;
             break;
         } else { //continue search
-            if lower_idx == upper_idx {
-                break; // r not in binning range
-            } else if r >= l {
+            if r >= l {
                 lower_idx = idx + 1;
                 idx = lower_idx + (upper_idx - lower_idx)/2;
             } else {
@@ -110,7 +109,9 @@ pub fn sample_file(path: &PathBuf,
     for i in 0..config.n_particles {
         for j in 0..i {
             let r = measure_distance(&config, i, j);
-            bin_distance(r, &mut count, lower_limit, upper_limit);
+            if r >= lower_limit[0] && r <= upper_limit[upper_limit.len() - 1] {
+                bin_distance(r, &mut count, lower_limit, upper_limit);
+            }
         }
     }
 
@@ -136,4 +137,72 @@ pub fn add_bins(mut acc: BinResult, b: &BinResult) -> BinResult {
     acc.n_obs += b.n_obs;
     acc.rho += b.rho;
     acc
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn binary_search1() {
+        let lower = [1.0, 2.0, 3.0, 4.0];
+        let upper = [2.0, 3.0, 4.0, 5.0];
+        let r = 0.9999999;
+        let mut count = [0usize, 0usize, 0usize];
+        bin_distance(r, &mut count, &lower, &upper);
+        assert!(count == [0, 0, 0]);
+    }
+    
+    #[test]
+    #[should_panic]
+    fn binary_search2() {
+        let lower = [1.0, 2.0, 3.0];
+        let upper = [2.0, 3.0, 4.0];
+        let r = 5.0;
+        let mut count = [0usize, 0usize, 0usize];
+        bin_distance(r, &mut count, &lower, &upper);
+        assert!(count == [0, 0, 0]);
+    }
+    
+    #[test]
+    fn binary_search3() {
+        let lower = [1.0, 2.0, 3.0];
+        let upper = [2.0, 3.0, 4.0];
+        let r = 3.5;
+        let mut count = [0usize, 0usize, 0usize];
+        bin_distance(r, &mut count, &lower, &upper);
+        assert!(count == [0, 0, 1]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn binary_search4() {
+        let lower: Vec<f64> = (1..101).map(|x| x as f64).collect();
+        let upper: Vec<f64> = (2..102).map(|x| x as f64).collect();
+        let r = 0.9;
+        let mut count = vec![0usize; 100];
+        bin_distance(r, &mut count, &lower, &upper);
+    }
+    
+    #[test]
+    #[should_panic]
+    fn binary_search5() {
+        let lower: Vec<f64> = (1..103).map(|x| x as f64).collect();
+        let upper: Vec<f64> = (2..104).map(|x| x as f64).collect();
+        let r = 104.1;
+        let mut count = vec![0usize; 102];
+        bin_distance(r, &mut count, &lower, &upper);
+    }
+
+    #[test]
+    fn binary_search6() {
+        let lower = [1.0, 2.0, 3.0];
+        let upper = [2.0, 3.0, 4.0];
+        let r = 1.5;
+        let mut count = [0usize, 0usize, 0usize];
+        bin_distance(r, &mut count, &lower, &upper);
+        assert!(count == [1, 0, 0]);
+    }
+
 }
