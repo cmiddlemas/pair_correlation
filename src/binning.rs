@@ -38,9 +38,24 @@ pub fn make_bins(opt: &Opt, first_config: &Config)
             eprintln!("Using {} bins", domain.len());
         }
     
+    } else if opt.logarithm {
+        
+        let log_interval = (opt.cutoff - opt.offset).log10();
+        let log_step = log_interval/(opt.nbins as f64);
+
+        domain = (0..opt.nbins)
+            .map(|x| 10.0f64.powf(log_step/2.0 + (x as f64)*log_step) + opt.offset)
+            .collect();
+        lower_limit = (0..opt.nbins)
+            .map(|x| 10.0f64.powf((x as f64)*log_step) + opt.offset)
+            .collect();
+        upper_limit = (0..opt.nbins)
+            .map(|x| 10.0f64.powf(((x+1) as f64)*log_step) + opt.offset)
+            .collect();
+
     } else { // Equal width bins
         
-        let step: f64 = opt.cutoff/(opt.nbins as f64);
+        let step: f64 = (opt.cutoff - opt.offset)/(opt.nbins as f64);
 
         domain = (0..opt.nbins)
         .map(|x| step/2.0 + (x as f64)*step + opt.offset)

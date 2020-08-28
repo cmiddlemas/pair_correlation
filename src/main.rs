@@ -58,6 +58,10 @@ pub struct Opt {
     /// If given, assume asc_monte_carlo file format
     #[structopt(long)]
     asc: bool,
+
+    /// If given, compute on logarithmic scale
+    #[structopt(long)]
+    logarithm: bool,
 }
 
 // Takes bin count and converts it to an approx
