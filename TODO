@@ -10,3 +10,5 @@ FEATURES
     Add a more systematic way of handling grand canonical ensemble
 
 BUGS
+    1 September 2020: Doesn't work with process substitution, because
+                      program tries to read from fd multiple times
