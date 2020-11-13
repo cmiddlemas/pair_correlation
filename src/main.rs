@@ -58,6 +58,10 @@ pub struct Opt {
     /// If given, assume asc_monte_carlo file format
     #[structopt(long)]
     asc: bool,
+    
+    /// If given, assume Donev file format
+    #[structopt(long)]
+    donev: bool,
 
     /// If given, compute on logarithmic scale
     #[structopt(long)]
@@ -174,6 +178,8 @@ fn main() {
 
     let first_config = if opt.asc {
         Config::parse_asc(&opt.files[0])
+    } else if opt.donev {
+        Config::parse_donev(&opt.files[0])
     } else {
         Config::parse(&opt.files[0])
     };

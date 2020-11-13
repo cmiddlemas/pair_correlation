@@ -9,7 +9,8 @@ pub struct Config {
     pub dim: usize,
     pub n_particles: usize,
     pub unit_cell: Vec<f64>,
-    pub coords: Vec<f64>
+    pub coords: Vec<f64>,
+    pub diameter: Option<f64>,
 }
 
 impl Config {
@@ -41,7 +42,7 @@ impl Config {
             }
         }
 
-        Config { dim, n_particles, unit_cell, coords }
+        Config { dim, n_particles, unit_cell, coords, diameter: None }
     }
 
     pub fn parse_asc(path: &PathBuf) -> Config {
@@ -95,6 +96,41 @@ impl Config {
             _ => unimplemented!(),
         }
 
-        Config { dim, n_particles, unit_cell, coords }
+        Config { dim, n_particles, unit_cell, coords, diameter: None }
+    }
+
+    // Only handles 3d data for now
+    pub fn parse_donev(path: &PathBuf) -> Config {
+        let dim: usize = 3;
+        let mut input = BufReader::new(File::open(path).unwrap());
+        let mut buf = String::new();
+
+        input.read_line(&mut buf).unwrap();
+        input.read_line(&mut buf).unwrap();
+        buf.clear();
+        input.read_line(&mut buf).unwrap();
+        let n_particles: usize = buf.trim().parse().unwrap();
+        buf.clear();
+        input.read_line(&mut buf).unwrap();
+        let diam: f64 = buf.trim().parse().unwrap();
+        buf.clear();
+        input.read_line(&mut buf).unwrap();
+        let unit_cell: Vec<f64> = buf.trim()
+                                     .split_whitespace()
+                                     .map(|x| x.parse().unwrap())
+                                     .collect();
+        input.read_line(&mut buf).unwrap();
+
+        let mut coords = Vec::new();
+        for line in input.lines() {
+            let one: Vec<f64> = line.unwrap()
+                                    .trim()
+                                    .split_whitespace()
+                                    .map(|x| x.parse::<f64>().unwrap())
+                                    .collect();
+            coords.extend_from_slice(&one);
+        }
+
+        Config { dim, n_particles, unit_cell, coords, diameter: Some(diam) }
     }
 }

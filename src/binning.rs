@@ -13,14 +13,19 @@ pub fn make_bins(opt: &Opt, first_config: &Config)
     let domain: Vec<f64>;
     let lower_limit: Vec<f64>;
     let mut upper_limit: Vec<f64>;
+    let lower_offset = if let Some(diam) = first_config.diameter {
+        diam
+    } else {
+        opt.offset
+    };
     if let Some(first_bin_width) = opt.autoscale { //Bins that scale with surface area of sphere
         
         let dim = first_config.dim;
         
-        let bin_vol: f64 = sphere_vol(dim, opt.offset+first_bin_width)
-            - sphere_vol(dim, opt.offset);
+        let bin_vol: f64 = sphere_vol(dim, lower_offset+first_bin_width)
+            - sphere_vol(dim, lower_offset);
 
-        let mut r_vec = vec![opt.offset, opt.offset+first_bin_width];
+        let mut r_vec = vec![lower_offset, lower_offset+first_bin_width];
         while *r_vec.last().unwrap() < opt.cutoff {
             let outer_vol = bin_vol + sphere_vol(dim, *r_vec.last().unwrap());
             r_vec.push(sphere_radius(dim, outer_vol));
@@ -40,11 +45,11 @@ pub fn make_bins(opt: &Opt, first_config: &Config)
     
     } else if opt.logarithm {
         
-        let interval = opt.cutoff - opt.offset;
+        let interval = opt.cutoff - lower_offset;
         domain = vec![0.0; opt.nbins];
         lower_limit = vec![0.0; opt.nbins];
         upper_limit = (0..opt.nbins)
-            .map(|x| opt.offset + interval * 2.0f64.powi(-(x as i32)))
+            .map(|x| lower_offset + interval * 2.0f64.powi(-(x as i32)))
             .collect();
         upper_limit.reverse();
         if !opt.cumulative {
@@ -53,18 +58,18 @@ pub fn make_bins(opt: &Opt, first_config: &Config)
 
     } else { // Equal width bins
         
-        let step: f64 = (opt.cutoff - opt.offset)/(opt.nbins as f64);
+        let step: f64 = (opt.cutoff - lower_offset)/(opt.nbins as f64);
 
         domain = (0..opt.nbins)
-        .map(|x| step/2.0 + (x as f64)*step + opt.offset)
+        .map(|x| step/2.0 + (x as f64)*step + lower_offset)
         .collect();
         
         lower_limit = (0..opt.nbins)
-        .map(|x| (x as f64)*step + opt.offset)
+        .map(|x| (x as f64)*step + lower_offset)
         .collect();
 
         upper_limit = (0..opt.nbins)
-        .map(|x| ((x+1) as f64)*step + opt.offset)
+        .map(|x| ((x+1) as f64)*step + lower_offset)
         .collect();
         
     }
@@ -113,6 +118,8 @@ pub fn sample_file(path: &PathBuf,
 {
     let config = if opt.asc {
         Config::parse_asc(path)
+    } else if opt.donev {
+        Config::parse_donev(path)
     } else {
         Config::parse(path)
     };
