@@ -70,6 +70,10 @@ pub struct Opt {
     /// If given, compute Z(r) instead
     #[structopt(long)]
     cumulative: bool,
+
+    /// If given, compute Tstar
+    #[structopt(long)]
+    tstar: bool,
 }
 
 // Takes bin count and converts it to an approx
@@ -83,10 +87,12 @@ fn format_output(count: &[usize],
                  n_obs: usize,
                  dim: usize,
                  n_ens: usize,
-                 rho: f64) -> f64
+                 rho: f64,
+                 opt: &Opt) -> f64
 {
     let mut sum_of_variance = 0.0;
     let eff_n_particles = (n_obs as f64)/(n_ens as f64);
+    let mut tstar_acc = 0.0;
     for (c, c2, r, l, u) in izip!(count,
                                   count2,
                                   domain,
@@ -106,11 +112,20 @@ fn format_output(count: &[usize],
                 *rho*(eff_n_particles as f64)
             );
         let g2 = ens_c*g2_coeff;
+        tstar_acc += width*((g2 - 1.0).abs());
         let var_g2 = ens_var_c*g2_coeff*g2_coeff;
         let std_err_g2 = var_g2.sqrt()/((n_ens as f64).sqrt());
         let poisson_est = (*c as f64).sqrt()*g2_coeff/f_n_ens;
-        println!("{} {} {} {} {}", r, g2, std_err_g2, poisson_est, width);
+        if !opt.tstar {
+            println!("{} {} {} {} {}", r, g2, std_err_g2, poisson_est, width);
+        }
         sum_of_variance += std_err_g2.powi(2);
+    }
+    if opt.tstar {
+        // https://doc.rust-lang.org/std/primitive.slice.html#method.last
+        let upper_cutoff = upper_limit.last().unwrap();
+        let lower_cutoff = lower_limit[0];
+        println!("{}", tstar_acc/(upper_cutoff - lower_cutoff));
     }
     sum_of_variance
 }
@@ -238,7 +253,8 @@ fn main() {
                               final_result.n_obs,
                               final_result.dim,
                               n_ens/size,
-                              final_result.rho/(n_ens as f64)
+                              final_result.rho/(n_ens as f64),
+                              &opt
                 )
             };
 
@@ -268,7 +284,8 @@ fn main() {
                                   result.n_obs,
                                   result.dim,
                                   b_sz,
-                                  result.rho/(b_sz as f64)
+                                  result.rho/(b_sz as f64),
+                                  &opt
                     );
                 }
             }
@@ -295,7 +312,8 @@ fn main() {
                           summed_result.n_obs,
                           summed_result.dim,
                           n_ens,
-                          summed_result.rho/(n_ens as f64)
+                          summed_result.rho/(n_ens as f64),
+                          &opt
             );
         }
     }
